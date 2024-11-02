@@ -22,8 +22,7 @@ import { timeFormat } from "d3-time-format";
 import { filterExtremes } from "./ChartUtils";
 
 const CandleChart = ({ initialData }) => {
-
-    console.log('Entered', initialData)
+  console.log("Entered", initialData);
   initialData = initialData.map((d, i) => {
     let adaptiveValue;
 
@@ -134,21 +133,24 @@ const CandleChart = ({ initialData }) => {
     );
   };
 
-  // Find the candles that meet the condition
+  const percentageThreshold = 0.025; // Set a 1% threshold
+
   const rectanglesToAnnotate = data
     .filter((d, i) => {
       if (i + 2 < data.length) {
         const secondNextCandle = data[i + 2];
-        return d.high < secondNextCandle.low;
+        
+        // Check if the third candle's high meets the dynamic threshold
+        const dynamicThreshold = d.high * (1 + percentageThreshold); // 1% above the high        
+        return secondNextCandle.high >= dynamicThreshold;
       }
       return false;
     })
-    .map((rectangleDatum) => {
-      // Determine if this rectangle intersects with the LineSeries after 5 candles
+    .map((rectangleDatum, i) => {
+      // Old logic for intersection check after 5 candles
       const startDate = rectangleDatum.date;
       const yMin = Math.min(rectangleDatum.high, rectangleDatum.low);
       const yMax = Math.max(rectangleDatum.high, rectangleDatum.low);
-
       const indexStart = data.findIndex((d) => d.date === startDate);
       const indexEnd = data.length - 1;
 
@@ -156,31 +158,45 @@ const CandleChart = ({ initialData }) => {
       let intersectionIndex = null;
 
       // Start checking from indexStart + 5
-      for (let i = indexStart + 5; i <= indexEnd; i++) {
-        if (i >= data.length) break; // Ensure we don't go out of bounds
+      for (let j = indexStart + 5; j <= indexEnd; j++) {
+        if (j >= data.length) break;
 
-        const d = data[i];
+        const d = data[j];
         const adaptiveValue = d.adaptiveValue;
         if (adaptiveValue !== undefined && adaptiveValue !== null) {
           if (adaptiveValue >= yMin && adaptiveValue <= yMax) {
             intersectsLine = true;
-            intersectionIndex = i;
+            intersectionIndex = j;
             break;
           }
         }
       }
 
-      // Determine if the intersection occurs within the last three candles
+      // Check if the intersection occurs within the last three candles
       const lastThreeCandlesStartIndex = data.length - 3;
       const intersectsInLastThreeCandles =
         intersectsLine && intersectionIndex >= lastThreeCandlesStartIndex;
 
-      return {
-        ...rectangleDatum,
-        intersectsLine,
-        intersectsInLastThreeCandles,
-      };
-    });
+      // New logic for extreme point check
+      const previous = data[i - 1] ?? {};
+      const next = data[i + 1] ?? {};
+      const isExtremePoint =
+        (rectangleDatum.adaptiveValue > (previous.adaptiveValue ?? -Infinity) &&
+          rectangleDatum.adaptiveValue > (next.adaptiveValue ?? -Infinity)) ||
+        (rectangleDatum.adaptiveValue < (previous.adaptiveValue ?? Infinity) &&
+          rectangleDatum.adaptiveValue < (next.adaptiveValue ?? Infinity));
+
+      // Return the rectangleDatum if it intersects or is near an extreme point
+      return (intersectsLine || isExtremePoint)
+        ? {
+            ...rectangleDatum,
+            intersectsLine,
+            intersectsInLastThreeCandles,
+          }
+        : null;
+    })
+    .filter((datum) => datum !== null);
+
 
   console.log(rectanglesToAnnotate);
 
